@@ -1,0 +1,134 @@
+---
+title: "Practical Machine Learning"
+author: "Nathan West"
+date: "April 6, 2020"
+output: html_document
+---
+
+
+**Step 1 - Loading the Dataset**
+*The data is combined of two datasets (1 for Training and 1 for Testing the model) containing 160 variables. The Training data has 19k observations and the Testing data has 20*
+ 
+```{r}
+#install.packages("readr")
+library(readr)
+training = read.csv('pml_training.csv')
+View(training)
+testing = read.csv('pml_testing.csv')
+View(testing)
+
+dim(training)
+```
+
+**Install Packages and Libraries**
+```{r}
+#install.packages("pacman")
+pacman::p_load(caret, e1071, rpart, rpart.plot, randomForest, ggplot2, doSNOW, stringr, rattle, caTools, lattice, gbm)
+```
+
+**Step 2 - Cleansing the Data Sets**
+*A. Use the NonZeroVar function in Caret to remove variables which have no zero variance, one unique value or few unique values relative to the number of samples*
+```{r}
+non_zero_var = nearZeroVar(training)
+
+training2 = training[,-non_zero_var]
+testing2 = testing[-non_zero_var]
+
+dim(training2) #This function removed 60 variables from both Test & Training Sets
+```
+
+*B. Remove variables with NA values with a Threshold of 95%*
+```{r}
+na = sapply(training2, function(x) mean(is.na(x))) > 0.95
+
+training3 = na.omit(training2)
+training4 = training3[,na == "FALSE"]
+training5 = training2[,na == "FALSE"]
+testing3 = testing2[,na == "FALSE"]
+
+dim(training4)
+dim(training5) #This function removed 31 variables from both Test & Training Sets
+```
+
+*C. Eliminate non-numeric variables for model which will not contribute to the prediction*
+```{r}
+training6 = training5[,8:59]
+testing4 = testing3[,8:59]
+
+dim(training6)
+dim(testing4) #This function removed 7 variables from both Test & Training Sets
+```
+
+**Step 3 - Partition the Training Data Set into two segments - 1 for training the model and 1 for testing (70/30 split)**
+*Use the createDataParition function in Caret to divide the data set*
+```{r}
+intrain = createDataPartition(training6$classe, p=.07, list = FALSE)
+training7 = training6[intrain,]
+testing5 = training6[-intrain,]
+```
+
+**Step 4 - Create a Decision Tree Model with the latest training data set**
+```{r}
+dt = train(classe ~., data = training7, method = "rpart")
+dt_prediction = predict(dt, testing5)
+confusionMatrix(dt_prediction, testing5$classe)
+```
+**Plot the Statistics into a Decision Tree**
+```{r}
+rpart.plot(dt$finalModel, roundint = F)
+```
+
+**The Decision Tree has a prediction rate of 56% - We will explore other models to try and increase the accuracy rate**
+
+**Step 5 - Create a Random Forest Model with the latest training data set**
+```{r}
+rf = train(classe ~., data = training7, method = "rf", ntree = 100)
+
+rf_prediction = predict(rf, testing5)
+rf_pred_conf = confusionMatrix(rf_prediction, testing5$classe)
+rf_pred_conf
+```
+```{r}
+plot(rf_pred_conf$table, col=rf_pred_conf$byClass, 
+     main=paste("Random Forest - Accuracy Level =",
+                round(rf_pred_conf$overall['Accuracy'],4)))
+```
+
+
+**The Random Forest has a prediction rate of 92% - An increase of 36% in the accuracy rate**
+
+**Step 6 - Create a Gradient Boosting Model to try and improve on the RF accruacy rate**
+```{r}
+gbm = train(classe ~., data = training7, method = "gbm", verbose = FALSE)
+gbm$finalModel
+
+gbm_prediction = predict(gbm, testing5)
+gbm_pred_conf = confusionMatrix(gbm_prediction, testing5$classe)
+gbm_pred_conf
+```
+
+**The Gradient Boosting Model has a prediction rate of 91% - A slight decrease vs. the RF accuracy rate**
+
+```{r}
+plot(gbm_pred_conf$table, col=gbm_pred_conf$byClass,
+     main=paste("Gradient Boosting - Accuracy Level =",
+                round(gbm_pred_conf$overall['Accuracy'],4)))
+```
+
+**Step 7 - Testing the Validation data for the RF & GB models since the accuracy for the DT wasn't satisfactory**
+
+```{r}
+rf_pred_conf$overall
+```
+
+```{r}
+gbm_pred_conf$overall
+```
+
+**Step 8 - Conclusion & Final Prediction**
+*The Random Forest will be selected as the Final Model due to overall accuracy*
+
+```{r}
+final_rf = predict(rf, testing2)
+final_rf
+```
